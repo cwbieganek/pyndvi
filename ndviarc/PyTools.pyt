@@ -110,15 +110,26 @@ class NDVI(object):
         return
 
     def execute(self, parameters, messages):
-        """The source code of the tool."""
+        # Retrieve individual parameters
+        inputRaster = parameters[0].valueAsText # NAIP Plus raster in .jp2 format
+        studyArea = parameters[1].valueAsText   # Shapefile that should include a single polygon
+        outputPath = parameters[2].valueAsText  # Should include the output file name
 
+
+        # Verify that studyArea has a single feature
+        if int(arcpy.GetCount_management(studyArea)[0]) != 1:
+            messages.addErrorMessage("{0} must have a single feature only.".format(studyArea))
+            raise arcpy.ExecuteError
+
+        # Update status window
+        messages.addMessage("Clipping NAIP imagery to study area...");
         # Clip input raster to studyArea
-        # Update status window
-        # TODO
+        arcpy.Clip_analysis(inputRaster, studyArea, "in_memory/studyArea_clip");
 
-        # Convert clipped raster into RasterLayer
         # Update status window
-        # TODO
+        messages.addMessage("Converting NAIP imagery to RasterLayer...");
+        # Convert clipped raster into Raster instance
+        clipped_naip = Raster("in_memory/studyArea_clip")
 
         # Turn Red band (1) into its own RasterLayer
         # Update status window
