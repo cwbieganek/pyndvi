@@ -13,6 +13,10 @@
 # Outputs:
 # 	GeoTIFF
 
+# Import modules
+import arcpy
+from arcpy import env
+
 # Get path to input .jp2
 # Set parameter description
 # inputRaster = ""
