@@ -111,17 +111,6 @@ class NDVI(object):
 
     def execute(self, parameters, messages):
         """The source code of the tool."""
-        
-        # Get path to input .jp2
-        # Set parameter description
-        inputRaster = arcpy.GetParameterAsText(0)
-
-        # Get path to input study area
-        # Set parameter description
-        studyArea = arcpy.GetParameterAsText(1)
-
-        # Get output path
-        outputPath = arcpy.GetParameterAsText(2)
 
         # Clip input raster to studyArea
         # Update status window
