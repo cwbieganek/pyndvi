@@ -1,6 +1,6 @@
 import arcpy
-from arcpy import Parameter
-
+from arcpy import Parameter, Raster
+import numpy
 
 class Toolbox(object):
     def __init__(self):
@@ -10,7 +10,7 @@ class Toolbox(object):
         self.alias = ""
 
         # List of tool classes associated with this toolbox
-        self.tools = [Tool]
+        self.tools = [NDVI]
 
 
 class Tool(object):
@@ -58,13 +58,13 @@ class NDVI(object):
     #   Output path
 
     # Outputs:
-    #   GeoTIFF
+    #   Raster dataset
 
     def __init__(self):
         """Define the tool (tool name is the name of the class)."""
         self.label = "NDVI from NAIP"
         self.description = "Calculates an output NDVI raster (GeoTIFF) using the input NAIP Plus (4-band) imagery."
-        self.canRunInBackground = False
+        self.canRunInBackground = True
 
     def getParameterInfo(self):
         # Input NAIP Plus raster (.jp2)
@@ -77,21 +77,21 @@ class NDVI(object):
 
         # Input study area (Shapefile)
         studyArea = Parameter(
-            displayName="Input Features",
-            name="in_features",
+            displayName="Study Area",
+            name="in_study_area",
             datatype="DEShapefile",
             parameterType="Required",
             direction="Input")
 
         # Output path
-        studyArea = Parameter(
-            displayName="Input Features",
-            name="in_features",
-            datatype="GPFeatureLayer",
+        outputPath = Parameter(
+            displayName="Output Path",
+            name="out_path",
+            datatype="DERasterDataset",
             parameterType="Required",
             direction="Output")
 
-        params = None
+        params = [inputRaster, studyArea, outputPath]
         return params
 
     def isLicensed(self):
@@ -109,12 +109,31 @@ class NDVI(object):
         parameter.  This method is called after internal validation."""
         return
 
+    def compareCoordinateSystems(self, s1, s2):
+        # Describe s1
+        s1Describe = arcpy.Describe(s1)
+        # Describe s2
+        s2Describe = arcpy.Describe(s2)
+        print "s1 spatial reference: " + s1Describe.spatialReference.name
+        print "s2 spatial reference: " + s2Describe.spatialReference.name
+        return s1Describe.spatialReference.name == s2Describe.spatialReference.name
+
     def execute(self, parameters, messages):
         # Retrieve individual parameters
         inputRaster = parameters[0].valueAsText # NAIP Plus raster in .jp2 format
         studyArea = parameters[1].valueAsText   # Shapefile that should include a single polygon
         outputPath = parameters[2].valueAsText  # Should include the output file name
 
+        # Log outputPath
+        messages.addMessage("Result will be located at {0}".format(outputPath))
+
+        # Verify that input raster and study area have the same coordinate system
+        coordinateSystemsMatch = self.compareCoordinateSystems(inputRaster, studyArea)
+        if coordinateSystemsMatch:
+            messages.addMessage("Coordinate systems for inputs are the same.")
+        else:
+            messages.addMessage("Coordinate systems for inputs are NOT the same.")
+            raise arcpy.ExecuteError
 
         # Verify that studyArea has a single feature
         if int(arcpy.GetCount_management(studyArea)[0]) != 1:
@@ -122,28 +141,64 @@ class NDVI(object):
             raise arcpy.ExecuteError
 
         # Update status window
-        messages.addMessage("Clipping NAIP imagery to study area...");
-        # Clip input raster to studyArea
-        arcpy.Clip_analysis(inputRaster, studyArea, "in_memory/studyArea_clip");
+        messages.addMessage("Getting extent of study area...")
+        # Describe the input raster
+        inputRasterDescription = arcpy.Describe(inputRaster)
+        # Describe the input studyArea
+        studyAreaDescription = arcpy.Describe(studyArea)
+        studyAreaExtent = studyAreaDescription.Extent
+        # Update environment variables
+        arcpy.env.outputCoordinateSystem = inputRasterDescription.spatialReference
+        arcpy.env.snapRaster = inputRaster
+
+        # Get extent variables
+        xMin = studyAreaExtent.XMin
+        yMin = studyAreaExtent.YMin
+        xMax = studyAreaExtent.XMax
+        yMax = studyAreaExtent.YMax
+
+        # Generate rectangle string argument for Clip_management
+        rectangleString = str(xMin) + " " + str(yMin) + " " + str(xMax) + " " + str(yMax)
 
         # Update status window
-        messages.addMessage("Converting NAIP imagery to RasterLayer...");
+        messages.addMessage("Clipping NAIP imagery to study area...")
+        # Clip input raster to studyArea
+        # arcpy.Clip_management(inputRaster, rectangleString, outputPath, "#", "#", "NONE", "NO_MAINTAIN_EXTENT")
+        arcpy.Clip_management(inputRaster, rectangleString, "in_memory/studyArea_clip", "#", "#", "NONE", "NO_MAINTAIN_EXTENT")
+
+        # Update status window
+        messages.addMessage("Converting NAIP imagery to RasterLayer...")
         # Convert clipped raster into Raster instance
         clipped_naip = Raster("in_memory/studyArea_clip")
 
-        # Turn Red band (1) into its own RasterLayer
         # Update status window
-        # redBand = TODO
+        messages.addMessage("Creating raster layer from Red Band...")
+        # Turn Red band (1) into its own RasterLayer
+        arcpy.MakeRasterLayer_management("in_memory/studyArea_clip", "redBandLayer", "", "", 1)
+        redBandNumPy = arcpy.RasterToNumPyArray("redBandLayer")
 
+        # Update status window
+        messages.addMessage("Creating raster layer from NIR Band...")
         # Turn NIR band (4) into its own RasterLayer
-        # nirBand = TODO
+        arcpy.MakeRasterLayer_management("in_memory/studyArea_clip", "nirBandLayer", "", "", 4)
+        nirBandNumPy = arcpy.RasterToNumPyArray("nirBandLayer")
 
-        # Create new RasterLayer equal to (nirBand - redBand) / (nirBand + redBand)
-        # outputRaster = TODO
+        # Create new numpy array equal to (nirBand - redBand) / (nirBand + redBand)
+        ndviNumPy = numpy.divide((numpy.subtract(nirBandNumPy, redBandNumPy)), (numpy.add(nirBandNumPy, redBandNumPy)))
+        ndviNumPy = numpy.multiply(ndviNumPy, 100)
+        ndviNumPy = numpy.around(ndviNumPy)
+        # Log numpy array for testing purposes
+        messages.addMessage(ndviNumPy)
 
-        # Convert outputRaster to GeoTIFF
-        # TODO
+        # Convert numpy array to Raster
+        outputRaster = arcpy.NumPyArrayToRaster(ndviNumPy)
 
-        # Save GeoTIFF at outputPath
-        # TODO
+        # Update status window
+        messages.addMessage("Saving result...")
+        # Save outputRaster
+        outputRaster.save(outputPath)
+
+        # Delete intermediate data
+        arcpy.Delete_management("in_memory/studyArea_clip")
+
         return
