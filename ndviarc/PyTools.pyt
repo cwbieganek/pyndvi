@@ -63,7 +63,7 @@ class NDVI(object):
     def __init__(self):
         """Define the tool (tool name is the name of the class)."""
         self.label = "NDVI from NAIP"
-        self.description = "Calculates an output NDVI raster (GeoTIFF) using the input NAIP Plus (4-band) imagery."
+        self.description = "Calculates an output NDVI raster using the input NAIP Plus (4-band) imagery."
         self.canRunInBackground = True
 
     def getParameterInfo(self):
