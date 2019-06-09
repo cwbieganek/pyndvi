@@ -1,6 +1,6 @@
 import arcpy
 from arcpy import Parameter, Raster
-import numpy
+from arcpy.sa import Float
 
 class Toolbox(object):
     def __init__(self):
@@ -170,34 +170,28 @@ class NDVI(object):
         messages.addMessage("Converting NAIP imagery to RasterLayer...")
         # Convert clipped raster into Raster instance
         clipped_naip = Raster("in_memory/studyArea_clip")
+        # Get lower-left corner of clipped_naip
+        lowerLeftCorner = clipped_naip.extent.lowerLeft
 
         # Update status window
         messages.addMessage("Creating raster layer from Red Band...")
         # Turn Red band (1) into its own RasterLayer
         arcpy.MakeRasterLayer_management("in_memory/studyArea_clip", "redBandLayer", "", "", 1)
-        redBandNumPy = arcpy.RasterToNumPyArray("redBandLayer")
+        redBandRaster = Raster("redBandLayer")
 
         # Update status window
         messages.addMessage("Creating raster layer from NIR Band...")
         # Turn NIR band (4) into its own RasterLayer
         arcpy.MakeRasterLayer_management("in_memory/studyArea_clip", "nirBandLayer", "", "", 4)
-        nirBandNumPy = arcpy.RasterToNumPyArray("nirBandLayer")
+        nirBandRaster = Raster("nirBandLayer")
 
-        # Create new numpy array equal to (nirBand - redBand) / (nirBand + redBand) * 100 + 100
-        # Base on: http://desktop.arcgis.com/en/arcmap/10.3/manage-data/raster-and-images/ndvi-function.htm
-        ndviNumPy = numpy.divide((numpy.subtract(nirBandNumPy, redBandNumPy)), (numpy.add(nirBandNumPy, redBandNumPy)))
-        ndviNumPy = numpy.multiply(ndviNumPy, 100)
-        ndviNumPy = numpy.add(ndviNumPy, 100)
-        # Log numpy array for testing purposes
-        messages.addMessage(ndviNumPy)
-
-        # Convert numpy array to Raster
-        outputRaster = arcpy.NumPyArrayToRaster(ndviNumPy)
+        # Use built-in map algebra to calculate NDVI
+        ndviRaster = (Float(nirBandRaster - redBandRaster) / Float(nirBandRaster + redBandRaster))
 
         # Update status window
         messages.addMessage("Saving result...")
         # Save outputRaster
-        outputRaster.save(outputPath)
+        ndviRaster.save(outputPath)
 
         # Delete intermediate data
         arcpy.Delete_management("in_memory/studyArea_clip")
