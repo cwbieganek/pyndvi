@@ -183,10 +183,11 @@ class NDVI(object):
         arcpy.MakeRasterLayer_management("in_memory/studyArea_clip", "nirBandLayer", "", "", 4)
         nirBandNumPy = arcpy.RasterToNumPyArray("nirBandLayer")
 
-        # Create new numpy array equal to (nirBand - redBand) / (nirBand + redBand)
+        # Create new numpy array equal to (nirBand - redBand) / (nirBand + redBand) * 100 + 100
+        # Base on: http://desktop.arcgis.com/en/arcmap/10.3/manage-data/raster-and-images/ndvi-function.htm
         ndviNumPy = numpy.divide((numpy.subtract(nirBandNumPy, redBandNumPy)), (numpy.add(nirBandNumPy, redBandNumPy)))
         ndviNumPy = numpy.multiply(ndviNumPy, 100)
-        ndviNumPy = numpy.around(ndviNumPy)
+        ndviNumPy = numpy.add(ndviNumPy, 100)
         # Log numpy array for testing purposes
         messages.addMessage(ndviNumPy)
 
